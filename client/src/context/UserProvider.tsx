@@ -15,7 +15,7 @@ type UserContextValue = {
 		lastName: string;
 		isTfaEnable: boolean;
 		status: UserStatus;
-		friends: { userName: string; status: UserStatus; id: number }[];
+		friends: Friend[];
 	};
 };
 
@@ -48,7 +48,7 @@ export type UserDataState = {
 	lastName: string;
 	isTfaEnable: boolean;
 	status: UserStatus;
-	friends: { userName: string; status: UserStatus; id: number }[];
+	friends: Friend[];
 };
 
 export const UserProvider = ({ children }: UserProviderProps) => {
@@ -91,6 +91,9 @@ export const UserProvider = ({ children }: UserProviderProps) => {
 			...user.friends.filter((f) => f.id !== friend.id),
 			friend,
 		];
+		newFriendsList.sort((a: Friend, b: Friend) =>
+			a.userName.localeCompare(b.userName),
+		);
 		setUser({ ...user, friends: newFriendsList });
 	};
 

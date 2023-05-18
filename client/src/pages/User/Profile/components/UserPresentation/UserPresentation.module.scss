@@ -49,7 +49,7 @@
 		}
 
 		.ingame {
-			background-color: var(--warning);
+			background-color: var(--primary);
 		}
 
 		.offline {
@@ -87,9 +87,10 @@
 		width: 90%;
 
 		@include mixin.sm-lt {
-			width: 50%;
-			margin-left: 50%;
-			margin-top: -1rem;
+			z-index: 1;
+			width: 40%;
+			margin-left: 55%;
+			margin-top: -2rem;
 		}
 	}
 }

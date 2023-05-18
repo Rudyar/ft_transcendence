@@ -22,7 +22,7 @@ export default function Settings() {
 		try {
 			const res = await userUploadAvatar(accessToken, formData);
 			if (res.ok) {
-				isAuth();
+				await isAuth();
 				showAlert("success", "Avatar updated");
 			} else {
 				const body = await res.json();

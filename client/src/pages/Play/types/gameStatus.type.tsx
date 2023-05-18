@@ -1,9 +1,12 @@
 import { UserDataState } from "../../../context";
+import { MapStatus } from "../enums/MapStatus";
 
 export type GameStatus = {
 	room: string;
 	ownerId: number;
+	ownerUserName: string;
 	playerId: number;
+	playerUserName: string;
 	owner: boolean;
 	waitingToStart: boolean;
 	started: boolean;
@@ -11,12 +14,16 @@ export type GameStatus = {
 	ended: boolean;
 	ownerScore: number;
 	playerScore: number;
+	map: MapStatus;
+	accelerator: boolean;
 };
 
 export const defaultGameStatus: GameStatus = {
 	room: "",
 	ownerId: 0,
+	ownerUserName: "",
 	playerId: 0,
+	playerUserName: "",
 	owner: false,
 	waitingToStart: false,
 	started: false,
@@ -24,6 +31,8 @@ export const defaultGameStatus: GameStatus = {
 	ended: false,
 	ownerScore: 0,
 	playerScore: 0,
+	map: MapStatus.default,
+	accelerator: false,
 };
 
 export function incrementOwnerScore(gameStatus: GameStatus): GameStatus {
@@ -57,18 +66,26 @@ export function alreadyInGame(
 	ownerScore: number,
 	playerScore: number,
 	ownerId: number,
+	ownerUserName: string,
 	playerId: number,
+	playerUserName: string,
+	map: number,
+	accelerator: boolean,
 ): GameStatus {
 	const owner: boolean = user.id === ownerId;
 	return {
 		...gameStatus,
 		room,
 		ownerId,
+		ownerUserName,
 		playerId,
+		playerUserName,
 		owner,
 		started: true,
 		ownerScore,
 		playerScore,
+		map,
+		accelerator,
 	};
 }
 
@@ -77,14 +94,18 @@ export function joinedGame(
 	user: UserDataState,
 	room: string,
 	ownerId: number,
+	ownerUserName: string,
 	playerId: number,
+	playerUserName: string,
 ): GameStatus {
 	const owner: boolean = user.id === ownerId;
 	return {
 		...gameStatus,
 		room,
 		ownerId,
+		ownerUserName,
 		playerId,
+		playerUserName,
 		owner,
 		waitingToStart: true,
 	};

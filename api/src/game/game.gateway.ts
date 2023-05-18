@@ -21,6 +21,7 @@ import {
 	GAME_LIMIT_SCORE,
 	OngoingGames,
 } from "../classes/OngoingGames";
+import { GameService } from "./game.service";
 
 @WebSocketGateway(8001, { namespace: "game", cors: "http://localhost:3001" })
 export class GameGateway
@@ -29,13 +30,16 @@ export class GameGateway
 	private readonly logger = new Logger(GameGateway.name);
 	@WebSocketServer()
 	io: Namespace;
-	reconnecting: boolean = false;
 	users: OnlineUsers = new OnlineUsers();
 	queue: GameQueue = new GameQueue();
 	ready: Set<number> = new Set<number>();
 	ongoing: OngoingGames = new OngoingGames();
 	waitingReconnection: Map<number, string> = new Map<number, string>();
-	constructor(private userService: UserService) {}
+	reconnecting: Set<number> = new Set<number>();
+	constructor(
+		private userService: UserService,
+		private gameService: GameService,
+	) {}
 
 	afterInit(): any {
 		this.logger.log("Websocket GameGateway initialized.");
@@ -46,17 +50,39 @@ export class GameGateway
 		const game = this.ongoing.getGameById(room);
 		const opponent = game.ownerId === user.id ? game.player : game.owner;
 		client.join(room);
-		client.emit(
-			"connectionStatus",
-			{ success: true, inGame: true },
-			{
-				room: game.id,
-				ownerId: game.ownerId,
-				playerId: game.playerId,
-				ownerScore: game.ownerScore,
-				playerScore: game.playerScore,
-			},
-		);
+		if (game.started) {
+			client.emit(
+				"connectionStatus",
+				{ success: true, inGame: true },
+				{
+					room: game.id,
+					ownerId: game.ownerId,
+					ownerUserName: game.owner.userName,
+					playerId: game.playerId,
+					playerUserName: game.player.userName,
+					ownerScore: game.ownerScore,
+					playerScore: game.playerScore,
+					accelerator: game.accelerator,
+					map: game.map,
+				},
+			);
+		} else {
+			client.emit(
+				"connectionStatus",
+				{ success: true, inGame: false, inOption: true },
+				{
+					room: game.id,
+					ownerId: game.ownerId,
+					ownerUserName: game.owner.userName,
+					playerId: game.playerId,
+					playerUserName: game.player.userName,
+					ownerScore: game.ownerScore,
+					playerScore: game.playerScore,
+					accelerator: game.accelerator,
+					map: game.map,
+				},
+			);
+		}
 		this.users.emitAllbyUserId(opponent.id, "reconnection", undefined);
 	}
 
@@ -69,9 +95,10 @@ export class GameGateway
 			this.logger.log(
 				`${game.owner.userName} vs ${game.player.userName} : both players disconnected, game ended.`,
 			);
-			this.endGame(room, false);
+			this.endGame(room, false, true);
 			this.waitingReconnection.delete(opponent.id);
 			this.waitingReconnection.delete(user.id);
+			this.users.removeClientId(client.id);
 			return;
 		}
 		this.io.to(room).emit("disconnection");
@@ -79,10 +106,10 @@ export class GameGateway
 			if (this.waitingReconnection.has(user.id)) {
 				this.waitingReconnection.delete(user.id);
 				this.logger.log(
-					`${game.owner.userName} vs ${game.player.userName} : ended (Reconnection timeout), ${opponent.userName} won.`,
+					`${game.owner.userName} vs ${game.player.userName} : ended or cancelled (Reconnection timeout).`,
 				);
-				this.endGame(room, false, opponent.id);
-				this.changeUserStatus(user, false);
+				this.endGame(room, false, false, opponent.id);
+				this.changeUserStatus(opponent, false);
 			}
 			this.users.removeClientId(client.id);
 		}, DISCONNECTION_TIMEOUT);
@@ -123,7 +150,7 @@ export class GameGateway
 		}
 		if (this.waitingReconnection.get(user.id)) {
 			this.waitingReconnection.delete(user.id);
-			this.reconnecting = true;
+			this.reconnecting.add(user.id);
 		}
 		if (this.users.hasByUserId(user.id))
 			this.users.addClientToUserId(user.id, client);
@@ -134,18 +161,7 @@ export class GameGateway
 
 	async changeUserStatus(user: User, inGame: boolean) {
 		const newStatus = inGame ? UserStatus.INGAME : UserStatus.ONLINE;
-		await this.userService.changeUserStatus(user.id, newStatus);
-		const onlineFriends = await this.users.getFriendsOfByUserId(
-			user.id,
-			this.userService,
-		);
-		for (let friend of onlineFriends) {
-			this.users.emitAllbyUserId(friend.id, "updateOnlineFriend", {
-				id: user.id,
-				userName: user.userName,
-				status: newStatus,
-			});
-		}
+		this.users.updateStatus(user.id, newStatus);
 	}
 
 	createGame() {
@@ -162,7 +178,12 @@ export class GameGateway
 		return this.ongoing.addGame(newRoom, usersPair.first, usersPair.second);
 	}
 
-	endGame(room: string, finished: boolean, winnerId?: number) {
+	endGame(
+		room: string,
+		finished: boolean,
+		bothDisconnected: boolean,
+		winnerId?: number,
+	) {
 		const game = this.ongoing.getGameById(room);
 		const usersPair: Pair<User> = {
 			first: this.users.getUserByUserId(game.ownerId),
@@ -183,12 +204,14 @@ export class GameGateway
 			this.users.leaveAllbyUserId(usersPair.second.id, room);
 			this.changeUserStatus(usersPair.first, false);
 			this.changeUserStatus(usersPair.second, false);
-		} else {
-			this.io.to(room).emit("gameEnded", winnerId);
+		} else if (!bothDisconnected) {
+			if (game.started) this.io.to(room).emit("gameEnded", winnerId);
+			else this.io.to(room).emit("gameCancelled");
 			this.users.leaveAllbyUserId(winnerId, room);
 			this.changeUserStatus(this.users.getUserByUserId(winnerId), false);
 		}
-		// post game to db
+		if (!bothDisconnected && game.started)
+			this.gameService.postGame({ ...game, winnerId });
 		this.ongoing.removeGame(room);
 	}
 
@@ -209,13 +232,14 @@ export class GameGateway
 		const user = this.users.getUserByClientId(client.id);
 		if (!user) client.emit("connectionStatusError");
 		else if (
-			!this.reconnecting &&
+			!this.reconnecting.has(user.id) &&
 			this.users.getClientsByClientId(client.id).size > 1
 		)
 			client.emit("connectionStatus", { success: false, inGame: false });
-		else if (this.ongoing.alreadyInGame(user.id))
+		else if (this.ongoing.alreadyInGame(user.id)) {
 			this.connectInGame(client, user);
-		else client.emit("connectionStatus", { success: true, inGame: false });
+			this.reconnecting.delete(user.id);
+		} else client.emit("connectionStatus", { success: true, inGame: false });
 	}
 
 	@SubscribeMessage("joinQueue")
@@ -238,7 +262,14 @@ export class GameGateway
 			const game = this.createGame();
 			this.io
 				.to(game.id)
-				.emit("joinedGame", game.id, game.ownerId, game.playerId);
+				.emit(
+					"joinedGame",
+					game.id,
+					game.ownerId,
+					game.owner.userName,
+					game.playerId,
+					game.player.userName,
+				);
 			this.logger.log(
 				`${this.ongoing.getGameById(game.id).owner.userName} vs ${
 					user.userName
@@ -258,11 +289,11 @@ export class GameGateway
 		const game = this.ongoing.getGameById(gameId);
 		const opponentId = game.ownerId === user.id ? game.playerId : game.ownerId;
 		if (this.ready.has(opponentId)) {
-			console.log("dewoqi");
 			this.ready.delete(opponentId);
 			if (accelerator !== game.accelerator)
 				accelerator = Math.random() < 0.5 ? accelerator : game.accelerator;
 			if (map !== game.map) map = Math.random() < 0.5 ? map : game.map;
+			this.ongoing.setStarted(game.id);
 			this.io.to(gameId).emit("bothPlayersReady", accelerator, map);
 		} else {
 			this.ready.add(user.id);
@@ -280,7 +311,6 @@ export class GameGateway
 			this.logger.log(`${this.queue.size()} user(s) queued.`);
 			this.users.emitAllbyUserId(user.id, "leftQueue", undefined);
 		}
-		// else this.users.emitAllbyUserId(user.id, "notInQueue", undefined);
 	}
 
 	@SubscribeMessage("updatePlayerPaddlePos")
@@ -315,7 +345,7 @@ export class GameGateway
 		this.io.to(room).emit("resetPaddles");
 		this.io.to(room).emit("scoreUpdate", ownerScored);
 		if (!ownerScored) {
-			if (this.ongoing.playerScored(room)) this.endGame(room, true);
-		} else if (this.ongoing.ownerScored(room)) this.endGame(room, true);
+			if (this.ongoing.playerScored(room)) this.endGame(room, true, false);
+		} else if (this.ongoing.ownerScored(room)) this.endGame(room, true, false);
 	}
 }

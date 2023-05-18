@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import Loader from "react-loaders";
 import { getAllUsersRequest, toggleFriendshipRequest } from "../../api";
 import { useAlert, useUser } from "../../context";
-import { Friend, UserStatus } from "../../types";
+import { Friend, NewUserName, UserStatus } from "../../types";
 import styles from "./Users.module.scss";
 import { useNavigate } from "react-router-dom";
 import trimUserName from "../../utils/trimUserName";
+import { usePrivateRouteSocket } from "../../context/PrivateRouteProvider";
 
 type UsersList = {
+	id: number;
 	userName: string;
 	isFriend: boolean;
 	status: UserStatus | null;
@@ -15,10 +17,48 @@ type UsersList = {
 
 export default function Users() {
 	const { accessToken, user, isAuth } = useUser();
+	const { socket } = usePrivateRouteSocket();
 	const { showAlert } = useAlert();
 	const navigate = useNavigate();
 	const [isLoading, setIsloading] = useState<boolean>(true);
-	const [usersList, setUsersList] = useState<any>([]);
+	const [usersList, setUsersList] = useState<UsersList[]>([]);
+
+	function sortUsersList(list: UsersList[]) {
+		if (list.length > 1) {
+			list.sort((a: UsersList, b: UsersList) =>
+				a.userName.localeCompare(b.userName),
+			);
+		}
+		return list;
+	}
+
+	function updateUserInList(userToUpdate: NewUserName | Friend | UsersList) {
+		const userInList = usersList.find((u) => u.id === userToUpdate.id);
+		if (!userInList) return;
+
+		const userUpdated: UsersList = { ...userInList, ...userToUpdate };
+		const newUsersList = [
+			...usersList.filter((u) => u.id !== userInList.id),
+			userUpdated,
+		];
+		setUsersList(sortUsersList(newUsersList));
+	}
+
+	function updateUsersListFriendship(userId: number, nowFriend: boolean) {
+		const userToUpdate = usersList.find((u) => u.id === userId);
+		if (!userToUpdate) return;
+		userToUpdate.isFriend = nowFriend;
+		if (nowFriend) {
+			socket?.once("getUserStatus", (status: UserStatus) => {
+				userToUpdate.status = status;
+				updateUserInList(userToUpdate);
+			});
+			socket?.emit("askUserStatus", userToUpdate.userName);
+		} else {
+			userToUpdate.status = null;
+			updateUserInList(userToUpdate);
+		}
+	}
 
 	function cleanUsersList(data: any) {
 		let list: UsersList[] = [];
@@ -26,28 +66,32 @@ export default function Users() {
 			.filter((u: UsersList) => u.userName !== user.userName)
 			.map((u: UsersList) => {
 				const friend: Friend | undefined = user.friends.find(
-					(f: any) => f.userName === u.userName,
+					(f: Friend) => f.userName === u.userName,
 				);
+				u.status = null;
 				if (friend) {
 					u.isFriend = true;
 					u.status = friend.status;
-				} else {
-					u.isFriend = false;
-					u.status = null;
-				}
+				} else u.isFriend = false;
 				return u;
 			});
-		setUsersList(list);
+		setUsersList(sortUsersList(list));
 	}
 
-	async function toggleFriendship(method: string, userName: string) {
+	async function toggleFriendship(
+		method: string,
+		userName: string,
+		userId: number,
+	) {
 		try {
 			const res = await toggleFriendshipRequest(accessToken, userName, method);
 			if (method === "DELETE" && res.status === 204) {
-				isAuth();
+				await isAuth();
+				updateUsersListFriendship(userId, false);
 				showAlert("warning", "Removed from friends");
 			} else if (res.ok) {
-				isAuth();
+				await isAuth();
+				updateUsersListFriendship(userId, true);
 				showAlert("info", "Added to friends");
 			} else showAlert("error", "A problem occured, try again later");
 		} catch (e) {
@@ -66,10 +110,21 @@ export default function Users() {
 			setIsloading(false);
 		}
 		getAllUsers();
-		// eslint-disable-next-line
-	}, [user]);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
 
-	// Order by username
+	useEffect(() => {
+		socket?.on("userNameUpdatedUsersList", (userSender: NewUserName) => {
+			updateUserInList(userSender);
+		});
+		socket?.on("updateOnlineFriend", (friend: Friend) => {
+			updateUserInList(friend);
+		});
+		return () => {
+			socket?.off("userNameUpdatedUsersList");
+		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [socket, user.friends, usersList]);
 
 	return (
 		<>
@@ -105,7 +160,7 @@ export default function Users() {
 									<li className="d-flex p-10 ml-5" key={i}>
 										<span
 											className={`${styles.statusBadge} ${
-												u.status
+												u.isFriend
 													? u.status === UserStatus.ONLINE
 														? styles.online
 														: u.status === UserStatus.INGAME
@@ -123,12 +178,16 @@ export default function Users() {
 										{u.isFriend ? (
 											<i
 												className={`${styles.minusIcon} fa-solid fa-user-minus`}
-												onClick={() => toggleFriendship("DELETE", u.userName)}
+												onClick={() =>
+													toggleFriendship("DELETE", u.userName, u.id)
+												}
 											/>
 										) : (
 											<i
 												className={`${styles.plusIcon} fa-solid fa-user-plus`}
-												onClick={() => toggleFriendship("PATCH", u.userName)}
+												onClick={() =>
+													toggleFriendship("PATCH", u.userName, u.id)
+												}
 											/>
 										)}
 										<i

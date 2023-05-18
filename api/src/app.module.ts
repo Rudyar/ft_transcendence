@@ -14,6 +14,7 @@ import { ChannelService } from "./channel/channel.service";
 import { MessageService } from "./message/message.service";
 import { MessageModule } from "./message/message.module";
 import { AppGateway } from "./app.gateway";
+import { GameService } from "./game/game.service";
 
 @Module({
 	imports: [
@@ -38,6 +39,7 @@ import { AppGateway } from "./app.gateway";
 		GameGateway,
 		ServerGateway,
 		UserService,
+		GameService,
 	],
 })
 export class AppModule {}

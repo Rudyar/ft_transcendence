@@ -110,7 +110,7 @@ export default function PrivateRoute(props: {
 	);
 
 	return isAuthenticated ? (
-		<PrivateRouteSocketContext.Provider value={{ socket, chatSocket}}>
+		<PrivateRouteSocketContext.Provider value={{ socket, chatSocket }}>
 			{props.play ? (
 				<GameSocketContext.Provider value={{ gameSocket }}>
 					{elem}

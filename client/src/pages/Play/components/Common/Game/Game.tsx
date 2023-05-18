@@ -9,15 +9,9 @@ interface GameProps {
 	showGames: () => void; // tmp
 	gameStatus: GameStatus;
 	gameSocket: Socket | null;
-	accelerator: boolean;
 }
 
-export default function Game({
-	showGames,
-	gameStatus,
-	gameSocket,
-	accelerator,
-}: GameProps) {
+export default function Game({ showGames, gameStatus, gameSocket }: GameProps) {
 	return (
 		<>
 			<div
@@ -26,15 +20,19 @@ export default function Game({
 				<div
 					className={`${styles.pointContainer} d-flex flex-row align-items justify-content-space-between`}
 				>
-					<div className={styles.leftPoints}>{gameStatus.playerScore} p</div>
-					<div className={styles.rightPoints}>o {gameStatus.ownerScore}</div>
+					<div className={styles.leftPoints}>
+						{gameStatus.playerScore} {gameStatus.playerUserName}
+					</div>
+					<div className={styles.rightPoints}>
+						{gameStatus.ownerUserName} {gameStatus.ownerScore}
+					</div>
 				</div>
 				<div className={`${styles.gameContainer}`}>
 					{gameStatus.owner ? (
 						<GameSocketContext.Provider value={{ gameSocket }}>
 							<OwnerGameRender
 								room={gameStatus.room}
-								accelerator={accelerator}
+								accelerator={gameStatus.accelerator}
 							/>
 						</GameSocketContext.Provider>
 					) : (

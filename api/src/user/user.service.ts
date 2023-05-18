@@ -12,6 +12,8 @@ import { createReadStream } from "fs";
 import { authenticator } from "otplib";
 import { toDataURL } from "qrcode";
 import * as fs from "fs";
+import { GameType } from "../game/types/game.type";
+import { GameInfosType } from "../common/types";
 
 @Injectable()
 export class UserService {
@@ -27,14 +29,6 @@ export class UserService {
 			},
 		});
 	}
-
-	// async getAllUsers() {
-	// 	return await this.prisma.user.findMany({
-	// 		select: {
-	// 			userName: true,
-	// 		},
-	// 	});
-	// }
 
 	async getUserByEmail(email: string): Promise<User> {
 		return await this.prisma.user.findUnique({
@@ -52,6 +46,14 @@ export class UserService {
 		});
 	}
 
+	async getUserById(id: number): Promise<User> {
+		return await this.prisma.user.findUnique({
+			where: {
+				id,
+			},
+		});
+	}
+
 	async createUser42(newUser: userInfo42Dto): Promise<User> {
 		if (!newUser.image) newUser.image = "";
 		return await this.prisma.user.create({
@@ -63,6 +65,8 @@ export class UserService {
 				lastName: newUser.last_name,
 				avatar: newUser.image,
 				socket: "",
+				wins: 0,
+				losses: 0,
 			},
 		});
 	}
@@ -122,7 +126,7 @@ export class UserService {
 			status: UserStatus;
 		}[];
 	}> {
-		return await this.prisma.user.findUnique({
+		const list = await this.prisma.user.findUnique({
 			where: {
 				id: user.id,
 			},
@@ -136,6 +140,8 @@ export class UserService {
 				},
 			},
 		});
+		list.friends.sort((a: any, b: any) => a.userName.localeCompare(b.userName));
+		return list;
 	}
 
 	async getUserFriendsOf(user: User): Promise<{
@@ -187,6 +193,82 @@ export class UserService {
 			},
 		});
 		return users;
+	}
+
+	async getAllGames(userId: number): Promise<GameInfosType[]> {
+		const playerGames = await this.prisma.user.findUnique({
+			where: { id: userId },
+			select: {
+				playerGames: {
+					select: {
+						owner: {
+							select: {
+								userName: true,
+							},
+						},
+						player: {
+							select: {
+								userName: true,
+							},
+						},
+						id: true,
+						ownerId: true,
+						playerId: true,
+						ownerScore: true,
+						playerScore: true,
+						winnerId: true,
+					},
+				},
+			},
+		});
+		const ownedGames = await this.prisma.user.findUnique({
+			where: { id: userId },
+			select: {
+				ownedGames: {
+					select: {
+						owner: {
+							select: {
+								userName: true,
+							},
+						},
+						player: {
+							select: {
+								userName: true,
+							},
+						},
+						id: true,
+						ownerId: true,
+						playerId: true,
+						ownerScore: true,
+						playerScore: true,
+						winnerId: true,
+					},
+				},
+			},
+		});
+		const allGames = new Array<GameInfosType>();
+		playerGames.playerGames.forEach((game) => {
+			const owner: Boolean = userId === game.ownerId;
+			allGames.push({
+				id: game.id,
+				opponentUsername: owner ? game.player.userName : game.owner.userName,
+				won: userId === game.winnerId,
+				ownScore: owner ? game.ownerScore : game.playerScore,
+				playerScore: owner ? game.playerScore : game.ownerScore,
+			});
+		});
+		ownedGames.ownedGames.forEach((game) => {
+			const owner: Boolean = userId === game.ownerId;
+			allGames.push({
+				id: game.id,
+				opponentUsername: owner ? game.player.userName : game.owner.userName,
+				won: userId === game.winnerId,
+				ownScore: owner ? game.ownerScore : game.playerScore,
+				playerScore: owner ? game.playerScore : game.ownerScore,
+			});
+		});
+		allGames.sort((a, b) => a.id - b.id);
+		return allGames;
 	}
 
 	async addToFriend(userName: string, newFriendUserName: string) {
@@ -279,6 +361,22 @@ export class UserService {
 		await this.prisma.user.update({
 			where: { id: userId },
 			data: { status: newStatus },
+		});
+	}
+
+	async newGameFinished(game: GameType) {
+		const winnerId = game.winnerId;
+		const loserId =
+			game.winnerId === game.ownerId ? game.playerId : game.ownerId;
+		const winner = await this.getUserById(winnerId);
+		const loser = await this.getUserById(loserId);
+		await this.prisma.user.update({
+			where: { id: winnerId },
+			data: { wins: winner.wins + 1 },
+		});
+		await this.prisma.user.update({
+			where: { id: loserId },
+			data: { losses: loser.losses + 1 },
 		});
 	}
 

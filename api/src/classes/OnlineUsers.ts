@@ -14,6 +14,10 @@ export class OnlineUsers {
 		this.size = 0;
 	}
 
+	getUsers() {
+		return this._users;
+	}
+
 	addNewUser(user: User, client: Socket): void {
 		this._clients.set(client.id, user.id);
 		const clientMap = new Map<string, Socket>([[client.id, client]]);
@@ -35,6 +39,26 @@ export class OnlineUsers {
 				this.size--;
 			}
 		}
+	}
+
+	updateStatus(userId: number, newStatus: UserStatus) {
+		const user: User = this.getUserByUserId(userId);
+		if (!user) return;
+		const sockets: Map<string, Socket> = this.getClientsByUserId(userId);
+		this._users.set(userId, {
+			user: { ...user, status: newStatus },
+			sockets: sockets,
+		});
+	}
+
+	updateUserName(userId: number, newUserName: string) {
+		const user: User = this.getUserByUserId(userId);
+		if (!user) return;
+		const sockets: Map<string, Socket> = this.getClientsByUserId(userId);
+		this._users.set(userId, {
+			user: { ...user, userName: newUserName },
+			sockets: sockets,
+		});
 	}
 
 	hasByUserId(userId: number): boolean {

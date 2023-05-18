@@ -41,6 +41,8 @@ export class AuthService {
 					email: dto.email,
 					userName: dto.userName,
 					avatar: "",
+					wins: 0,
+					losses: 0,
 				},
 			});
 			this.logger.log(`New user creation: ${user.userName}`);

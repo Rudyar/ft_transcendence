@@ -28,6 +28,8 @@ model User {
   avatar    String?
   ownedGames Game[] @relation("owner")
   playerGames Game[] @relation("player")
+  wins         Int
+  losses       Int
   socket      String?
   tfaSecret   String?
   isTfaEnable Boolean @default(false)
@@ -79,4 +81,5 @@ model Game {
   playerId    Int
   ownerScore  Int
   playerScore Int
+  winnerId    Int
 }

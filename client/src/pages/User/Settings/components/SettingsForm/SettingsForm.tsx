@@ -12,7 +12,7 @@ import { usePrivateRouteSocket } from "../../../../../context/PrivateRouteProvid
 
 export default function SettingsForm() {
 	const { accessToken, user, isAuth } = useUser();
-	const {socket} = usePrivateRouteSocket();
+	const { socket } = usePrivateRouteSocket();
 	const { showAlert } = useAlert();
 	const [newUserName, setNewUserName] = useState<string>(user.userName);
 	const [tfaModal, setTfaModal] = useState<boolean>(false);
@@ -27,9 +27,9 @@ export default function SettingsForm() {
 				const data = await res.json();
 				showAlert("error", data.message);
 			} else {
-				isAuth();
+				await isAuth();
 				showAlert("success", "Profile updated");
-				socket?.emit("userNameUpdated", newUserName)
+				socket?.emit("userNameUpdated", newUserName);
 			}
 		} catch (e) {
 			console.error("Error update userName", e);
@@ -56,7 +56,7 @@ export default function SettingsForm() {
 		try {
 			const res = await disableTfaRequest(accessToken);
 			if (res.ok) {
-				isAuth();
+				await isAuth();
 				showAlert("info", "TFA is now disable");
 			} else showAlert("error", "Can't disable TFA, try again later");
 		} catch (e) {

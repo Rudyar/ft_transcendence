@@ -24,7 +24,7 @@ export default function TfaModal({ closeModal, qrCodeUrl }: ModalProps) {
 		try {
 			const res = await enableTfaRequest(accessToken, verificationCode);
 			if (res.ok) {
-				isAuth();
+				await isAuth();
 				showAlert("info", "TFA is now enable");
 				closeModal();
 			} else {

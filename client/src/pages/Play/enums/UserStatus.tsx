@@ -5,6 +5,7 @@ export enum GameUserStatus {
 	inQueue,
 	choosingOptions,
 	readyToStart,
+	gameCancelled,
 	waitingGameStart,
 	waitingGameRestart,
 	inGame,
